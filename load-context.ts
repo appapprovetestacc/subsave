@@ -54,11 +54,13 @@ export interface Env {
   // To activate: add the matching block to wrangler.toml:
   //   [[d1_databases]] / [[r2_buckets]] / [[queues.producers]] /
   //   [[durable_objects.bindings]]
-  D1?: D1Database;
+  // Phase 3.7 — Cloudflare D1 binding for the managed sync layer.
+  // Also used by AI-generated route code that references env.D1 — bindings
+  // that are unbound at runtime are `undefined`, so callers must defensively
+  // check first or the user will see a runtime error.
+  D1?: import("@cloudflare/workers-types").D1Database;
   R2?: R2Bucket;
   QUEUE?: Queue;
-  // Phase 3.7 — Cloudflare D1 binding for the managed sync layer.
-  D1?: import("@cloudflare/workers-types").D1Database;
   // Bearer token gating /sync/status. Set by the AppApprove deploy
   // pipeline; without it the endpoint returns 503.
   SYNC_STATUS_TOKEN?: string;
