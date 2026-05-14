@@ -13,6 +13,8 @@ const HANDLERS: Record<string, () => Promise<{ default: CronHandler }>> = {
   "0 8 * * *": () => import("../crons/gdpr-deadline-check"),
   // Phase 3.7 B — sync backfill driver
   "*/5 * * * *": () => import("../crons/sync-backfill"),
+  // SubSave — daily renewals sweep + pre-renewal reminders + dunning
+  "30 9 * * *": () => import("../crons/subscription-renewals"),
 };
 
 // CF Workers `scheduled` event entry point. Wire this from your Worker's

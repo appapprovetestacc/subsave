@@ -40,10 +40,12 @@ const HANDLERS: Record<string, () => Promise<{ default: WebhookHandler }>> = {
   "products/update": () => import("../webhooks/products-upsert"),
   "products/delete": () => import("../webhooks/products-delete"),
   "inventory_levels/update": () => import("../webhooks/variants-inventory"),
-  "orders/create": () => import("../webhooks/orders-upsert"),
+  "orders/create": () => import("../webhooks/orders-create"),
   "orders/updated": () => import("../webhooks/orders-upsert"),
-  "orders/cancelled": () => import("../webhooks/orders-upsert"),
+  "orders/cancelled": () => import("../webhooks/orders-cancelled"),
   "orders/delete": () => import("../webhooks/orders-delete"),
+  // SubSave — subscriber capture
+  "customers/create": () => import("../webhooks/customers-create"),
   // AppApprove codegen extends this map from appapprove.config.ts at build time.
 };
 

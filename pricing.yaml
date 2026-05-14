@@ -12,18 +12,13 @@
 currency: USD
 
 plans:
-  - name: Free
-    price: 0
-
-  - name: Pro
+  - name: SubSave
     interval: monthly
     price: 29
-    trial_days: 7
-
-  - name: Enterprise
-    interval: monthly
-    price: 199
     trial_days: 14
     features:
-      - Custom integrations
-      - Priority support
+      - Unlimited recurring subscriptions
+      - Pause / skip / cancel from admin + storefront
+      - Automatic dunning with exponential-backoff retries
+      - Pre-renewal email reminders 3 days out
+      - MRR + churn dashboard

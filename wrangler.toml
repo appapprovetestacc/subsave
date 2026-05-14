@@ -46,6 +46,7 @@ APPAPPROVE_PROJECT_SLUG = "subsave"
 crons = [
   "*/5 * * * *",  # sync backfill driver (Phase 3.7 B)
   "0 8 * * *",    # daily GDPR deadline scan
+  "30 9 * * *",   # SubSave renewals + dunning + pre-renewal reminders
 ]
 
 # CF Cron Triggers — uncomment + add schedules here, then mirror them in

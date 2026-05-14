@@ -21,10 +21,12 @@ const config: AppApproveConfig = {
     "products/update": "~/webhooks/products-upsert",
     "products/delete": "~/webhooks/products-delete",
     "inventory_levels/update": "~/webhooks/variants-inventory",
-    "orders/create": "~/webhooks/orders-upsert",
+    "orders/create": "~/webhooks/orders-create",
     "orders/updated": "~/webhooks/orders-upsert",
-    "orders/cancelled": "~/webhooks/orders-upsert",
+    "orders/cancelled": "~/webhooks/orders-cancelled",
     "orders/delete": "~/webhooks/orders-delete",
+    // SubSave — subscriber capture on first checkout
+    "customers/create": "~/webhooks/customers-create",
   },
   crons: {
     // CF Cron Trigger schedules. The example handler runs hourly.
@@ -41,11 +43,16 @@ const config: AppApproveConfig = {
     // and processes one page per resource per shop. Mirror the schedule
     // in wrangler.toml [triggers] crons.
     "*/5 * * * *": "~/crons/sync-backfill",
+
+    // SubSave — daily renewal sweep. Processes due renewals, sends
+    // pre-renewal reminders 3 days out, and retries failed charges
+    // (dunning) with exponential backoff. Mirror in wrangler.toml.
+    "30 9 * * *": "~/crons/subscription-renewals",
   },
   env: {
     // Public env vars are exposed to the browser. Secrets stay server-only.
     public: [],
-    secrets: ["SHOPIFY_API_SECRET", "SYNC_STATUS_TOKEN"],
+    secrets: ["SHOPIFY_API_SECRET", "SYNC_STATUS_TOKEN", "RESEND_API_KEY"],
   },
   pricing: "./pricing.yaml",
 };
