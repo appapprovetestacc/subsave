@@ -27,7 +27,8 @@ import {
 import polarisStyles from "@shopify/polaris/build/esm/styles.css?url";
 import enTranslations from "@shopify/polaris/locales/en.json";
 import type { Env } from "../../load-context";
-import { authenticate } from "~/lib/shopify.server";
+import { authenticate, isValidShop } from "~/lib/shopify.server";
+import { loadOfflineSession } from "~/lib/session-storage.server";
 import { getAppSettings, putAppSettings } from "~/lib/db/app-tables.server";
 import {
   cancelSubscription,
@@ -100,11 +101,16 @@ function serialize(row: SubscriptionRow): SerializedSubscription {
   };
 }
 
-async function loadDashboard(request: Request, context: LoaderFunctionArgs["context"]): Promise<LoaderData | LoaderError> {
+async function loadDashboard(
+  request: Request,
+  context: LoaderFunctionArgs["context"],
+): Promise<LoaderData | LoaderError> {
   const env = (context.cloudflare?.env ?? {}) as Env;
-  // The dashboard is embedded — App Bridge JWT auth runs first. When the
-  // app isn't yet wired up (no SHOPIFY_API_KEY, request didn't come from
-  // the iframe), surface a clear "configure" state instead of throwing.
+  // Loader-level auth uses the offline-session pattern (not App Bridge
+  // JWT). The embedded admin URL always carries ?shop=<store>.myshopify.com
+  // — we resolve the persisted OAuth token from session storage and use
+  // it for D1 queries. Mutations go through the action handler below,
+  // which still verifies the App Bridge session token.
   if (!env.SHOPIFY_API_KEY || !env.SHOPIFY_API_SECRET || !env.SHOPIFY_APP_URL) {
     return {
       configured: false,
@@ -117,27 +123,33 @@ async function loadDashboard(request: Request, context: LoaderFunctionArgs["cont
       reason: "D1 binding missing — run `wrangler d1 create subsave-db` and paste the id into wrangler.toml.",
     };
   }
-  try {
-    const { shop } = await authenticate.admin(request, context);
-    const [metrics, subs, settings] = await Promise.all([
-      dashboardMetrics(env.D1, shop),
-      listSubscriptions(env.D1, shop, { limit: 100 }),
-      getAppSettings<DashboardSettings>(env.D1, shop),
-    ]);
-    return {
-      configured: true,
-      shop,
-      metrics,
-      subscriptions: subs.map(serialize),
-      settings,
-    };
-  } catch (err) {
-    if (err instanceof Response) throw err;
+  const url = new URL(request.url);
+  const shop = url.searchParams.get("shop");
+  if (!shop) {
     return {
       configured: false,
-      reason: err instanceof Error ? err.message : String(err),
+      reason: "Open this app from the Shopify admin — the embedded URL carries ?shop=<store>.myshopify.com.",
     };
   }
+  if (!isValidShop(shop)) {
+    throw new Response("Invalid ?shop", { status: 400 });
+  }
+  const session = await loadOfflineSession(context, shop);
+  if (!session) {
+    throw redirect("/auth?shop=" + encodeURIComponent(shop));
+  }
+  const [metrics, subs, settings] = await Promise.all([
+    dashboardMetrics(env.D1, shop),
+    listSubscriptions(env.D1, shop, { limit: 100 }),
+    getAppSettings<DashboardSettings>(env.D1, shop),
+  ]);
+  return {
+    configured: true,
+    shop,
+    metrics,
+    subscriptions: subs.map(serialize),
+    settings,
+  };
 }
 
 export async function loader({ request, context }: LoaderFunctionArgs) {

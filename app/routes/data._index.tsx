@@ -1,19 +1,27 @@
-import { json, type LoaderFunctionArgs } from "@remix-run/cloudflare";
+import { json, redirect, type LoaderFunctionArgs } from "@remix-run/cloudflare";
 import { Link, useLoaderData } from "@remix-run/react";
 import { count, eq } from "drizzle-orm";
 import type { Env } from "../../load-context";
-import { authenticate } from "~/lib/shopify.server";
+import { isValidShop } from "~/lib/shopify.server";
+import { loadOfflineSession } from "~/lib/session-storage.server";
 import { getDb, schema } from "~/lib/db/client.server";
 
 // Index of synced tables. Per-table pages live at /data/<resource>.
-// Counts are scoped to the embedded-admin session's shop — without the
-// shop filter this would leak cross-tenant row counts.
+// Counts are scoped to the requested shop's offline session — without
+// the shop filter this would leak cross-tenant row counts.
 
 export async function loader({ context, request }: LoaderFunctionArgs) {
-  // Phase 3 hardening — embedded-admin session required (same as the
-  // per-resource pages). Without this gate any anonymous visitor could
-  // discover row counts across all shops.
-  const { shop } = await authenticate.admin(request, context);
+  // Offline-session auth — same pattern as the per-resource pages. The
+  // embedded admin URL carries ?shop=<store>.myshopify.com; if no
+  // persisted OAuth session exists we redirect to /auth to install.
+  const url = new URL(request.url);
+  const shopParam = url.searchParams.get("shop");
+  if (!shopParam || !isValidShop(shopParam)) {
+    throw new Response("Missing or invalid ?shop", { status: 400 });
+  }
+  const session = await loadOfflineSession(context, shopParam);
+  if (!session) throw redirect("/auth?shop=" + encodeURIComponent(shopParam));
+  const shop = shopParam;
   const env = (context.cloudflare?.env ?? {}) as Env;
   if (!env.D1) throw json({ error: "D1 binding missing" }, { status: 503 });
   const db = getDb(env.D1);

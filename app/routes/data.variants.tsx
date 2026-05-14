@@ -1,30 +1,36 @@
-import { json, type LoaderFunctionArgs } from "@remix-run/cloudflare";
+import { json, redirect, type LoaderFunctionArgs } from "@remix-run/cloudflare";
 import { Link, useLoaderData, useSearchParams } from "@remix-run/react";
 import type { Env } from "../../load-context";
-import { authenticate } from "~/lib/shopify.server";
+import { isValidShop } from "~/lib/shopify.server";
+import { loadOfflineSession } from "~/lib/session-storage.server";
 import { listProductVariants } from "~/lib/sync/api/variants.server";
 
 // Read-only browser for the synced "variants" table. Pagination + search
-// via query params (?q=, ?page=). The shop is derived from the embedded-
-// admin session — never trust a ?shop= query param for cross-tenant access.
-// Writes intentionally NOT exposed — Shopify is the source of truth for
-// resource state, so any modification must round-trip through the Admin
-// API (use a separate Remix route for that). For app-owned data (where
-// the merchant app IS the source of truth), see app/lib/db/
-// app-tables.server.ts for the CRUD pattern.
+// via query params (?q=, ?page=). Auth is via the offline-session pattern:
+// the embedded admin URL carries ?shop=, we validate it and resolve the
+// persisted OAuth session before any D1 read so cross-tenant data never
+// leaks. Writes intentionally NOT exposed — Shopify is the source of
+// truth for resource state, so any modification must round-trip through
+// the Admin API (use a separate Remix route for that). For app-owned
+// data (where the merchant app IS the source of truth), see
+// app/lib/db/app-tables.server.ts for the CRUD pattern.
 
 const PAGE_SIZE = 50;
 
 export async function loader({ context, request }: LoaderFunctionArgs) {
-  // Phase 3 hardening — embedded-admin session required. Without this
-  // gate any anonymous visitor with the URL pattern + ?shop= could read
-  // every shop's mirrored data. authenticate.admin throws a 401 Response
-  // when the session token is missing/invalid, which Remix surfaces as
-  // a clean error page (App Bridge re-issues the token on retry).
-  const { shop } = await authenticate.admin(request, context);
+  // Offline-session auth. Validate ?shop and reject anything that isn't
+  // a real myshopify.com hostname before touching D1; if there's no
+  // persisted session for the shop, kick to /auth to install.
+  const url = new URL(request.url);
+  const shopParam = url.searchParams.get("shop");
+  if (!shopParam || !isValidShop(shopParam)) {
+    throw new Response("Missing or invalid ?shop", { status: 400 });
+  }
+  const session = await loadOfflineSession(context, shopParam);
+  if (!session) throw redirect("/auth?shop=" + encodeURIComponent(shopParam));
+  const shop = shopParam;
   const env = (context.cloudflare?.env ?? {}) as Env;
   if (!env.D1) throw json({ error: "D1 binding missing" }, { status: 503 });
-  const url = new URL(request.url);
   const q = url.searchParams.get("q") ?? "";
   const page = Math.max(1, Number.parseInt(url.searchParams.get("page") ?? "1", 10) || 1);
   const result = await listProductVariants(env.D1, {
